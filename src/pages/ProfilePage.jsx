@@ -14,6 +14,10 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "../services/firebase";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
+import ProfileStatsCard from "../components/ProfileStatsCard";
+import ProfileGameList from "../components/ProfileGameList";
+import { getPlayerStats } from "../services/playerStatsService";
+
 
 
 /* ================= PROFILE PAGE ================= */
@@ -31,6 +35,10 @@ export default function ProfilePage() {
         avatarUrl: ""
     });
     const navigate = useNavigate();
+    const [statsLoading, setStatsLoading] = useState(true);
+    const [playerStats, setPlayerStats] = useState(null);
+    const [playedSessions, setPlayedSessions] = useState([]);
+
 
 
     /* ================= LOAD PROFILE ================= */
@@ -56,6 +64,28 @@ export default function ProfilePage() {
 
         loadProfile();
     }, [user]);
+
+    /* ================= LOAD PLAYER STATS ================= */
+    useEffect(() => {
+        const loadStats = async () => {
+            if (!user?.uid) return;
+
+            setStatsLoading(true);
+
+            try {
+                const { stats, sessions } = await getPlayerStats(user.uid);
+                setPlayerStats(stats);
+                setPlayedSessions(sessions);
+            } catch (err) {
+                console.error("Failed to load player stats", err);
+            } finally {
+                setStatsLoading(false);
+            }
+        };
+
+        loadStats();
+    }, [user]);
+
 
     /* ================= SAVE PROFILE ================= */
     const saveProfile = async () => {
@@ -205,6 +235,22 @@ export default function ProfilePage() {
                     </TextField>
                 </Stack>
             </Card>
+
+            {/* ===== PLAYER STATS ===== */}
+            {statsLoading ? (
+                <Typography color="text.secondary" mb={2}>
+                    Loading stats…
+                </Typography>
+            ) : (
+                <>
+                    <ProfileStatsCard stats={playerStats} />
+                    <ProfileGameList
+                        sessions={playedSessions}
+                        userId={user.uid}
+                    />
+                </>
+            )}
+
 
             {/* ===== SAVE BUTTON ===== */}
             <Button

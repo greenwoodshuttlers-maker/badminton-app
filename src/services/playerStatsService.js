@@ -92,3 +92,56 @@ export const getPlayerStats = async (userId) => {
     sessions
   };
 };
+
+/* =========================================================
+   PHASE-2.2 — PAYMENT ANALYTICS
+   Month-wise aggregation
+   ========================================================= */
+
+/**
+ * Group played sessions by month and calculate spend
+ * @param {Array} sessions - archived sessions user played
+ */
+export const buildMonthlyPaymentStats = (sessions = []) => {
+  const monthlyMap = {};
+
+  sessions.forEach(session => {
+    if (!session.eventDate?.toDate) return;
+
+    const date = session.eventDate.toDate();
+    const monthKey = `${date.getFullYear()}-${date.getMonth() + 1}`;
+
+    const totalAmount = session.booking?.amount || 0;
+    const playersCount =
+      session.attendance?.playedUserIds?.length || 1;
+
+    const perHead = Math.round(totalAmount / playersCount);
+
+    if (!monthlyMap[monthKey]) {
+      monthlyMap[monthKey] = {
+        monthKey,
+        monthLabel: date.toLocaleString("en-IN", {
+          month: "long",
+          year: "numeric"
+        }),
+        gamesPlayed: 0,
+        totalSpent: 0
+      };
+    }
+
+    monthlyMap[monthKey].gamesPlayed += 1;
+    monthlyMap[monthKey].totalSpent += perHead;
+  });
+
+  // Convert to array + compute avg
+  return Object.values(monthlyMap)
+    .map(m => ({
+      ...m,
+      avgPerGame:
+        m.gamesPlayed > 0
+          ? Math.round(m.totalSpent / m.gamesPlayed)
+          : 0
+    }))
+    .sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+};
+

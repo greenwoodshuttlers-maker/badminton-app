@@ -204,7 +204,7 @@ export default function LiveVotingDashboard({ session }) {
           </Typography>
         )}
 
-        {isAdmin && session.status === "OPEN" && (
+        {isAdmin && session.status === "OPEN" && !session.archived && (
           <Button
             variant="outlined"
             color="error"
@@ -296,7 +296,7 @@ export default function LiveVotingDashboard({ session }) {
       <Box sx={{ bgcolor: "#f7fff5", p: 2, borderRadius: 2, mt: 3 }}>
         <Typography fontWeight="bold">📍 Booking Details</Typography>
 
-        {isAdmin ? (
+        {isAdmin && !session.archived ? (
           <Stack spacing={1} mt={1}>
             <TextField
               label="Venue"
@@ -331,7 +331,7 @@ export default function LiveVotingDashboard({ session }) {
       <Box sx={{ bgcolor: "#fffaf2", p: 2, borderRadius: 2, mt: 3 }}>
         <Typography fontWeight="bold">₹ Payment Details</Typography>
 
-        {isAdmin ? (
+        {isAdmin && !session.archived ? (
           <Stack>
             {users.map(u => {
               const isPlayed = playedIds.includes(u.uid);

@@ -30,6 +30,11 @@ function App() {
           path="/profile"
           element={user ? <ProfilePage /> : <Navigate to="/" />}
         />
+        <Route
+          path="/profile/:userId"
+          element={user ? <ProfilePage /> : <Navigate to="/" />}
+        />
+
         <Route path="/history" element={<HistoryPage />} />
         <Route path="*" element={<Navigate to="/" />} />
         <Route path="/users" element={<UserManagementPage />} />

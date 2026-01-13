@@ -9,7 +9,7 @@ import dayjs from "dayjs";
 export default function ProfileGameList({ sessions = [], userId }) {
   if (!sessions.length || !userId) {
     return (
-      <Card sx={{ p: 2, borderRadius: 3 }}>
+      <Card sx={{ p: 2, borderRadius: 3, mb: 3 }}>
         <Typography fontWeight="bold" mb={1}>
           🗂 My Games
         </Typography>
@@ -28,7 +28,7 @@ export default function ProfileGameList({ sessions = [], userId }) {
   });
 
   return (
-    <Card sx={{ p: 2, borderRadius: 3 }}>
+    <Card sx={{ p: 2, borderRadius: 3, mb: 3, bgcolor: "#f1e3c7ff", }}>
       <Typography fontWeight="bold" mb={2}>
         🗂 My Games
       </Typography>

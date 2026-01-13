@@ -26,8 +26,8 @@ export default function ProfileStatsCard({ stats }) {
         p: 2,
         borderRadius: 3,
         mb: 3,
-        bgcolor: "#f5f9ff"
-      }}
+        bgcolor: "#dbf2ecff"
+      }} x
     >
       <Typography fontWeight="bold" mb={2}>
         📊 My Badminton Stats

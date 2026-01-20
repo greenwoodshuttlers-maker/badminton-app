@@ -9,6 +9,13 @@
           "badminton-group-c1a91"
         ]
       }
+    },
+    "badminton-group-prod": {
+      "hosting": {
+        "main": [
+          "badminton-group-prod"
+        ]
+      }
     }
   },
   "etags": {}

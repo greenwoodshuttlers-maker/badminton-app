@@ -22,6 +22,8 @@ import {
   getPlayerStats,
   buildMonthlyPaymentStats
 } from "../services/playerStatsService";
+import dayjs from "dayjs";
+
 
 /* ================= PROFILE PAGE ================= */
 export default function ProfilePage() {
@@ -44,8 +46,14 @@ export default function ProfilePage() {
     nickname: "",
     skillLevel: "",
     experience: "",
-    avatarUrl: ""
+    avatarUrl: "",
+    unavailability: {
+      reason: "",
+      from: "",
+      to: ""
+    }
   });
+
 
   const [statsLoading, setStatsLoading] = useState(true);
   const [playerStats, setPlayerStats] = useState(null);
@@ -66,8 +74,18 @@ export default function ProfilePage() {
           nickname: data.profile?.nickname || "",
           skillLevel: data.profile?.skillLevel || "",
           experience: data.profile?.experience || "",
-          avatarUrl: data.profile?.avatarUrl || ""
+          avatarUrl: data.profile?.avatarUrl || "",
+          unavailability: {
+            reason: data.profile?.unavailability?.reason || "",
+            from: data.profile?.unavailability?.from
+              ? dayjs(data.profile.unavailability.from.toDate()).format("YYYY-MM-DD")
+              : "",
+            to: data.profile?.unavailability?.to
+              ? dayjs(data.profile.unavailability.to.toDate()).format("YYYY-MM-DD")
+              : ""
+          }
         });
+
       }
 
       setLoading(false);
@@ -114,7 +132,19 @@ export default function ProfilePage() {
         nickname: profile.nickname.trim(),
         skillLevel: profile.skillLevel,
         experience: profile.experience,
-        avatarUrl: profile.avatarUrl.trim()
+        avatarUrl: profile.avatarUrl.trim(),
+        unavailability:
+          profile.unavailability.reason &&
+            profile.unavailability.reason !== "AVAILABLE" &&
+            profile.unavailability.from &&
+            profile.unavailability.to
+
+            ? {
+              reason: profile.unavailability.reason,
+              from: new Date(profile.unavailability.from),
+              to: new Date(profile.unavailability.to)
+            }
+            : null
       }
     });
 
@@ -258,6 +288,83 @@ export default function ProfilePage() {
           </TextField>
         </Stack>
       </Card>
+
+      {/* ===== REST / UNAVAILABILITY ===== */}
+      <Card sx={{ p: 2, mb: 3, borderRadius: 3, bgcolor: "#fff3f3" }}>
+        <Stack spacing={2}>
+          <Typography fontWeight="bold">
+            🛌 Availability / Rest Period
+          </Typography>
+
+          <TextField
+            select
+            label="Status"
+            value={profile.unavailability.reason}
+            disabled={!isOwnProfile}
+            onChange={e =>
+              setProfile({
+                ...profile,
+                unavailability: {
+                  ...profile.unavailability,
+                  reason: e.target.value
+                }
+              })
+            }
+            fullWidth
+          >
+            <MenuItem value="AVAILABLE">Available</MenuItem>
+            <MenuItem value="INJURED">Injured</MenuItem>
+            <MenuItem value="VACATION">Vacation</MenuItem>
+            <MenuItem value="PERSONAL">Personal Break</MenuItem>
+
+          </TextField>
+
+          {profile.unavailability.reason && (
+            <>
+              <TextField
+                type="date"
+                label="From"
+                InputLabelProps={{ shrink: true }}
+                value={profile.unavailability.from}
+                disabled={!isOwnProfile}
+                onChange={e =>
+                  setProfile({
+                    ...profile,
+                    unavailability: {
+                      ...profile.unavailability,
+                      from: e.target.value
+                    }
+                  })
+                }
+              />
+
+              <TextField
+                type="date"
+                label="To"
+                InputLabelProps={{ shrink: true }}
+                value={profile.unavailability.to}
+                disabled={!isOwnProfile}
+                onChange={e =>
+                  setProfile({
+                    ...profile,
+                    unavailability: {
+                      ...profile.unavailability,
+                      to: e.target.value
+                    }
+                  })
+                }
+              />
+            </>
+          )}
+
+          {profile.unavailability.reason && (
+            <Typography fontSize={13} color="text.secondary">
+              You will be excluded from voting during this period.
+            </Typography>
+          )}
+        </Stack>
+      </Card>
+
 
       {/* ===== STATS ===== */}
       {statsLoading ? (

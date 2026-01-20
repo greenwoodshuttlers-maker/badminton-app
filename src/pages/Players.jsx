@@ -55,6 +55,7 @@ export default function Players() {
           name: d.name,
           nickname: d.profile?.nickname,
           role: d.role || "PLAYER",
+          profile: d.profile || {},
           isOnline: d.isOnline === true,
           lastLoginAt: d.lastLoginAt || null
         };
@@ -211,6 +212,7 @@ export default function Players() {
                       name={player.name}
                       nickname={player.nickname}
                       role={player.role}
+                      profile={player.profile}
                     />
                   </Typography>
 

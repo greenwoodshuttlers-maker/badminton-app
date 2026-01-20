@@ -1,14 +1,32 @@
-import { Typography, Box } from "@mui/material";
+import { Typography, Box, Chip } from "@mui/material";
 import { ROLE_BADGES } from "../config/roleBadges";
+import dayjs from "dayjs";
 
 export default function DisplayName({
     name,
     nickname,
     role,
-    variant = "body1"
+    variant = "body1",
+    profile
 }) {
     const display = nickname || name;
     const badge = ROLE_BADGES[role];
+
+    /* ================= REST / UNAVAILABILITY ================= */
+    const unavail = profile?.unavailability;
+
+    const showUnavailable =
+        unavail &&
+        unavail.reason &&
+        unavail.reason !== "AVAILABLE" &&
+        unavail.from &&
+        unavail.to &&
+        dayjs().isBetween(
+            dayjs(unavail.from.toDate()),
+            dayjs(unavail.to.toDate()),
+            "day",
+            "[]"
+        );
 
     return (
         <Box
@@ -16,7 +34,8 @@ export default function DisplayName({
             sx={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 0.8
+                gap: 0.8,
+                flexWrap: "wrap"
             }}
         >
             {/* Player Name */}
@@ -50,7 +69,8 @@ export default function DisplayName({
                             '"Inter", "Calibre", "Segoe UI", sans-serif',
                         color: badge.color || "#b8860b",
                         backgroundColor:
-                            badge.backgroundColor || "rgba(184, 134, 11, 0.12)",
+                            badge.backgroundColor ||
+                            "rgba(184, 134, 11, 0.12)",
                         letterSpacing: "0.4px",
                         lineHeight: 1.2,
                         whiteSpace: "nowrap",
@@ -74,6 +94,21 @@ export default function DisplayName({
                 >
                     {badge.label}
                 </Box>
+            )}
+
+            {/* Rest / Unavailability Badge */}
+            {showUnavailable && (
+                <Chip
+                    size="small"
+                    label={unavail.reason}
+                    color="warning"
+                    sx={{
+                        height: 18,
+                        fontSize: "0.65rem",
+                        fontWeight: 600,
+                        textTransform: "capitalize"
+                    }}
+                />
             )}
         </Box>
     );

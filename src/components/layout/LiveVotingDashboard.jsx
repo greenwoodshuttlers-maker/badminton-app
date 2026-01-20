@@ -75,6 +75,18 @@ export default function LiveVotingDashboard({ session }) {
   const formatDate = ts =>
     ts ? dayjs(ts.toDate()).format("dddd, DD MMM YYYY") : null;
 
+  const isUserAvailableForSession = (user, sessionDate) => {
+    const ua = user?.profile?.unavailability;
+    if (!ua || !ua.from || !ua.to) return true;
+
+    const from = dayjs(ua.from.toDate());
+    const to = dayjs(ua.to.toDate());
+    const date = dayjs(sessionDate.toDate());
+
+    return !date.isBetween(from, to, "day", "[]");
+  };
+
+
   /* ================= PER HEAD AMOUNT ================= */
   const perHeadAmount = useMemo(() => {
     if (!amount || playedIds.length === 0) return null;
@@ -126,11 +138,36 @@ export default function LiveVotingDashboard({ session }) {
   }, [session.status, session.endTime]);
 
   /* ================= DERIVED ================= */
-  const playing = votes.filter(v => v.vote === "PLAYING");
-  const notPlaying = votes.filter(v => v.vote === "NOT_PLAYING");
+
+  const availableUsers = useMemo(() => {
+    if (!session.eventDate) return users;
+    return users.filter(u =>
+      isUserAvailableForSession(u, session.eventDate)
+    );
+  }, [users, session.eventDate]);
+
+  const currentUser = useMemo(() => {
+    return users.find(u => u.uid === user.uid);
+  }, [users, user.uid]);
+
+
+  const playing = votes.filter(
+    v =>
+      v.vote === "PLAYING" &&
+      availableUsers.some(u => u.uid === v.userId)
+  );
+
+  const notPlaying = votes.filter(
+    v =>
+      v.vote === "NOT_PLAYING" &&
+      availableUsers.some(u => u.uid === v.userId)
+  );
 
   const votedIds = new Set(votes.map(v => v.userId));
-  const didntVote = users.filter(u => !votedIds.has(u.uid));
+
+  const didntVote = availableUsers.filter(
+    u => !votedIds.has(u.uid)
+  );
 
   const myVote = votes.find(v => v.userId === user.uid)?.vote;
 
@@ -169,37 +206,76 @@ export default function LiveVotingDashboard({ session }) {
 
   /* ================= WHATSAPP SHARE ================= */
   const shareOnWhatsApp = () => {
+    const link = `${window.location.origin}/dashboard`;
+
     const names = arr =>
-      arr.map(v => {
-        const u = getUser(v.userId);
-        return `- ${u?.profile?.nickname || u?.name || v.name}`;
-      });
+      arr
+        .map(v => {
+          const u = getUser(v.userId);
+          return u?.profile?.nickname || u?.name || v.name;
+        })
+        .join(", ");
 
-    const didntVoteNames = didntVote.map(
-      u => `- ${u.profile?.nickname || u.name}`
-    );
+    const playingNames = names(playing);
+    const notPlayingNames = names(notPlaying);
+    const didntVoteNames = didntVote
+      .map(u => u.profile?.nickname || u.name)
+      .join(", ");
 
-    const msg = `
-🏸 Badminton Voting
+    let msg = "";
+
+    /* ================= PHASE 1: VOTING JUST OPENED ================= */
+    if (session.status === "OPEN" && votes.length === 0 && isAdmin) {
+      msg = `
+🏸✨ *Voting Open!*
 
 📅 ${formatDate(session.eventDate)}
-🗳 ${session.title}
+🗳 *${session.title}*
 
-🟢 Playing (${playing.length})
-${names(playing).join("\n") || "-"}
-
-🔴 Not Playing (${notPlaying.length})
-${names(notPlaying).join("\n") || "-"}
-
-⚪ Didn’t Vote (${didntVote.length})
-${didntVoteNames.join("\n") || "-"}
-
-👉 Vote here:
-${window.location.origin}/dashboard
+Kindly cast your vote 👇
+🔗 ${link}
 `;
+    }
+
+    /* ================= PHASE 2: VOTING IN PROGRESS ================= */
+    else if (session.status === "OPEN") {
+      msg = `
+🏸 *Voting Update*
+
+🟢 Playing: ${playingNames || "-"}
+🔴 Not Playing: ${notPlayingNames || "-"}
+⚪ Didn’t Vote: ${didntVoteNames || "-"}
+
+Vote now 👇
+🔗 ${link}
+`;
+    }
+
+    /* ================= PHASE 3: VOTING CLOSED ================= */
+    else if (session.status === "CLOSED") {
+      msg = `
+🏸✨ *FINAL VOTING RESULT*
+
+━━━━━━━━━━━━━━
+📅 ${formatDate(session.eventDate)}
+🗳 *${session.title}*
+━━━━━━━━━━━━━━
+
+🟢 *Playing Players*
+${playingNames || "—"}
+
+📌 Voting is now closed.
+
+🔍 View full details here:
+${link}
+`;
+    }
+
+    // 🔥 FINAL STEP: OPEN WHATSAPP
+    if (!msg.trim()) return;
 
     window.open(
-      "https://wa.me/?text=" + encodeURIComponent(msg),
+      "https://wa.me/?text=" + encodeURIComponent(msg.trim()),
       "_blank"
     );
   };
@@ -257,29 +333,58 @@ ${window.location.origin}/dashboard
           </Button>
         )}
 
-        {session.status === "OPEN" && (
-          <Stack direction="row" spacing={2} mb={2}>
-            <Tooltip title="ARE YOU GAME?" arrow>
-              <Button
-                fullWidth
-                variant="contained"
-                color="success"
-                onClick={() => castVote(session.id, "PLAYING")}
-              >
-                <SportsTennisIcon /> PLAYING
-              </Button>
-            </Tooltip>
+        { /* ============ PLAYER VOTING BUTTONS ===============*/}
 
-            <Button
-              fullWidth
-              variant="contained"
-              color="error"
-              onClick={() => castVote(session.id, "NOT_PLAYING")}
-            >
-              NOT PLAYING
-            </Button>
-          </Stack>
+        {session.status === "OPEN" && (
+          <>
+            {currentUser && !isUserAvailableForSession(currentUser, session.eventDate) && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                🚫 You are unavailable for this session due to{" "}
+                <strong>
+                  {currentUser.profile?.unavailability?.reason || "rest"}
+                </strong>
+                . Voting is disabled.
+              </Alert>
+            )}
+
+            <Stack direction="row" spacing={2} mb={2}>
+              <Tooltip title="ARE YOU GAME?" arrow>
+                <Box sx={{ flex: 1 }}>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    color="success"
+                    disabled={
+                      currentUser &&
+                      !isUserAvailableForSession(currentUser, session.eventDate)
+                    }
+                    onClick={() => castVote(session.id, "PLAYING")}
+                    startIcon={<SportsTennisIcon />}
+                  >
+                    PLAYING
+                  </Button>
+                </Box>
+              </Tooltip>
+
+              <Box sx={{ flex: 1 }}>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  color="error"
+                  disabled={
+                    currentUser &&
+                    !isUserAvailableForSession(currentUser, session.eventDate)
+                  }
+                  onClick={() => castVote(session.id, "NOT_PLAYING")}
+                >
+                  NOT PLAYING
+                </Button>
+              </Box>
+            </Stack>
+          </>
         )}
+
+
 
         {/* ===== VOTE SUMMARY ===== */}
         {[

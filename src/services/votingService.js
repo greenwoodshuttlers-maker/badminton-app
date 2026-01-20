@@ -39,11 +39,32 @@ export const startVotingSession = async (endTime, user, title, eventDate) => {
 
 /* ================= END SESSION ================= */
 export const endVotingSession = async (sessionId) => {
-  await updateDoc(doc(db, "voting_sessions", sessionId), {
-    status: "CLOSED"
-    // ❌ DO NOT touch archived here
+  if (!sessionId) return;
+
+  const sessionRef = doc(db, "voting_sessions", sessionId);
+
+  // 1️⃣ Get all votes
+  const votesSnap = await getDocs(
+    collection(db, "voting_sessions", sessionId, "votes")
+  );
+
+  const votes = votesSnap.docs.map(d => d.data());
+
+  // 2️⃣ Extract PLAYING users
+  const playedUserIds = votes
+    .filter(v => v.vote === "PLAYING")
+    .map(v => v.userId);
+
+  // 3️⃣ Close voting + freeze attendance
+  await updateDoc(sessionRef, {
+    status: "CLOSED",
+    attendance: {
+      playedUserIds,
+      markedAt: serverTimestamp()
+    }
   });
 };
+
 
 /* ================= CAST / UPDATE VOTE ================= */
 export const castVote = async (sessionId, voteValue) => {

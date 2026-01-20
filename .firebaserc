@@ -1,5 +1,15 @@
 {
   "projects": {
-    "default": "badminton-group-c1a91"
-  }
+    "default": "badminton-group-prod"
+  },
+  "targets": {
+    "badminton-group-c1a91": {
+      "hosting": {
+        "main": [
+          "badminton-group-c1a91"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

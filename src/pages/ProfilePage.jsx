@@ -259,23 +259,26 @@ export default function ProfilePage() {
         </Stack>
       </Card>
 
-      {/* ===== STATS & PAYMENTS ===== */}
+      {/* ===== STATS ===== */}
       {statsLoading ? (
         <Typography color="text.secondary">
           Loading stats…
         </Typography>
       ) : (
-        <>
-          <ProfileStatsCard stats={playerStats} />
-          <ProfileGameList
-            sessions={playedSessions}
-            userId={effectiveUserId}
-          />
-          <ProfilePaymentSummary
-            monthlyStats={monthlyStats}
-          />
-        </>
+        <ProfileStatsCard stats={playerStats} />
       )}
+
+      {/* ===== ATTENDANCE ===== */}
+      <ProfileGameList
+        sessions={playedSessions}
+        userId={effectiveUserId}
+      />
+
+      {/* ===== PAYMENTS ===== */}
+      <ProfilePaymentSummary
+        monthlyStats={monthlyStats}
+      />
+
 
       {/* ===== SAVE BUTTON ===== */}
       {isOwnProfile && (

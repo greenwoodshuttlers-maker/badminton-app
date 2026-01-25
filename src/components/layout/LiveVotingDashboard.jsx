@@ -427,7 +427,14 @@ ${link}
   /* ================= UI ================= */
 
   return (
-    <Card sx={{ p: 2.2, mb: 3, borderRadius: 3 }}>
+    <Card
+      sx={{
+        p: { xs: 1.2, sm: 2.2 },   // 👈 smaller padding on mobile
+        mb: 2,
+        borderRadius: 3
+      }}
+    >
+
 
       {/* ===== LIVE HEADER ===== */}
       <Box>
@@ -480,9 +487,9 @@ ${link}
               onClick={() => castVote(session.id, "PLAYING")}
               startIcon={<SportsTennisIcon />}
               sx={{
-                py: 1.4,
+                py: { xs: 0.8, sm: 1.4 },
                 fontWeight: "bold",
-                fontSize: 14,
+                fontSize: { xs: 12, sm: 14 },
                 borderRadius: 2,
                 boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
                 textTransform: "none"
@@ -502,9 +509,9 @@ ${link}
               }
               onClick={() => castVote(session.id, "NOT_PLAYING")}
               sx={{
-                py: 1.4,
+                py: { xs: 0.8, sm: 1.4 },
                 fontWeight: "bold",
-                fontSize: 14,
+                fontSize: { xs: 12, sm: 14 },
                 borderRadius: 2,
                 boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
                 textTransform: "none"

@@ -256,7 +256,7 @@ export default function HistoryPage() {
                 sx={{
                   backgroundColor: theme.bg,
                   borderRadius: 2.5,
-                  p: 2.2,
+                  p: { xs: 1.2, sm: 2.2 },
                   transition: "all 0.3s ease",
                   "&:hover": {
                     backgroundColor: "#ffffff"

@@ -204,17 +204,59 @@ export const updateSessionBooking = async (sessionId, booking) => {
 /*============== SESSION ATTENDANCE UPDATE ======================*/
 export const updateSessionAttendance = async (
   sessionId,
-  playedUserIds
+  playedUserIds,
+  votes = []
 ) => {
   if (!sessionId) return;
 
   const ref = doc(db, "voting_sessions", sessionId);
 
+  const confirmations = {};
+
+  playedUserIds.forEach(uid => {
+    const vote = votes.find(v => v.userId === uid);
+
+    // if user voted PLAYING → auto confirmed
+    if (vote && vote.vote === "PLAYING") {
+      confirmations[uid] = "CONFIRMED";
+    } else {
+      confirmations[uid] = "PENDING"; // needs player action
+    }
+  });
+
   await updateDoc(ref, {
     attendance: {
       playedUserIds,
+      confirmations,
       markedAt: serverTimestamp()
     }
   });
 };
 
+
+/*============== CONFIRM ATTENDANCE ======================*/
+export const confirmAttendance = async (sessionId, userId, status) => {
+  const ref = doc(db, "voting_sessions", sessionId);
+
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+
+  const data = snap.data();
+  const confirmations = data.attendance?.confirmations || {};
+
+  confirmations[userId] = status; // CONFIRMED or REJECTED
+
+  await updateDoc(ref, {
+    "attendance.confirmations": confirmations
+  });
+};
+
+/*============== Listen Session ======================*/
+export const listenSession = (sessionId, callback) => {
+  const ref = doc(db, "voting_sessions", sessionId);
+  return onSnapshot(ref, (snap) => {
+    if (snap.exists()) {
+      callback({ id: snap.id, ...snap.data() });
+    }
+  });
+};

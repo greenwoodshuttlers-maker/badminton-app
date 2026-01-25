@@ -1,3 +1,5 @@
+// src/components/layout/LiveVotingDashboard.jsx
+
 import { useEffect, useRef, useState, useMemo } from "react";
 import SportsTennisIcon from "@mui/icons-material/SportsTennis";
 import Tooltip from "@mui/material/Tooltip";
@@ -6,7 +8,6 @@ import {
   Button,
   Card,
   Typography,
-  Divider,
   Stack,
   Accordion,
   AccordionSummary,
@@ -20,7 +21,6 @@ import {
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import dayjs from "dayjs";
-
 import {
   castVote,
   endVotingSession,
@@ -28,15 +28,26 @@ import {
   reopenArchivedSession,
   listenVotesDetailed,
   updateSessionBooking,
-  updateSessionAttendance
+  updateSessionAttendance,
+  confirmAttendance
 } from "../../services/votingService";
-
 import { listenActiveUsers } from "../../services/userService";
 import { useAuth } from "../../context/AuthContext";
 import DisplayName from "../DisplayName";
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
+} from "@mui/material";
+import {
+  listenSession
+} from "../../services/votingService";
+
+
 
 /* =========================================================
-   LIVE VOTING DASHBOARD
+   LIVE VOTING DASHBOARD (MOBILE-FIRST SPORTS UI)
    ========================================================= */
 export default function LiveVotingDashboard({ session }) {
   const { user } = useAuth();
@@ -50,6 +61,12 @@ export default function LiveVotingDashboard({ session }) {
   const [votes, setVotes] = useState([]);
   const [users, setUsers] = useState([]);
   const [timeLeft, setTimeLeft] = useState(null);
+  const [showConfirmPopup, setShowConfirmPopup] = useState(false);
+  const [myAttendanceStatus, setMyAttendanceStatus] = useState(null);
+  const [liveSession, setLiveSession] = useState(session);
+  const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
+
+
 
   // Booking
   const [venue, setVenue] = useState(session.booking?.venue || "");
@@ -59,6 +76,49 @@ export default function LiveVotingDashboard({ session }) {
   const [playedIds, setPlayedIds] = useState(
     session.attendance?.playedUserIds || []
   );
+
+  // Attendance Confirmation
+  const myConfirmationStatus =
+    session.attendance?.confirmations?.[user.uid];
+
+  const shouldShowConfirmButton =
+    session.attendance?.playedUserIds?.includes(user.uid) &&
+    myConfirmationStatus === "PENDING";
+
+
+  {/* ===== PLAYER ATTENDANCE CONFIRMATION POPUP ===== */ }
+  <Dialog open={showConfirmPopup} onClose={() => { }}>
+    <DialogTitle>🏸 Attendance Confirmation</DialogTitle>
+    <DialogContent>
+      <Typography fontSize={14}>
+        Admin marked you as <b>PLAYING</b> in this game.
+        <br />
+        Did you actually play?
+      </Typography>
+    </DialogContent>
+    <DialogActions>
+      <Button
+        color="error"
+        onClick={async () => {
+          await confirmAttendance(session.id, user.uid, "REJECTED");
+          setShowConfirmPopup(false);
+        }}
+      >
+        ❌ No, I didn’t play
+      </Button>
+
+      <Button
+        variant="contained"
+        color="success"
+        onClick={async () => {
+          await confirmAttendance(session.id, user.uid, "CONFIRMED");
+          setShowConfirmPopup(false);
+        }}
+      >
+        ✅ Yes, I played
+      </Button>
+    </DialogActions>
+  </Dialog>
 
   // Snackbar
   const [snackbar, setSnackbar] = useState({
@@ -70,13 +130,14 @@ export default function LiveVotingDashboard({ session }) {
   const timerRef = useRef(null);
 
   /* ================= HELPERS ================= */
+
   const getUser = uid => users.find(u => u.uid === uid);
 
   const formatDate = ts =>
     ts ? dayjs(ts.toDate()).format("dddd, DD MMM YYYY") : null;
 
-  const isUserAvailableForSession = (user, sessionDate) => {
-    const ua = user?.profile?.unavailability;
+  const isUserAvailableForSession = (userObj, sessionDate) => {
+    const ua = userObj?.profile?.unavailability;
     if (!ua || !ua.from || !ua.to) return true;
 
     const from = dayjs(ua.from.toDate());
@@ -86,14 +147,23 @@ export default function LiveVotingDashboard({ session }) {
     return !date.isBetween(from, to, "day", "[]");
   };
 
-
   /* ================= PER HEAD AMOUNT ================= */
   const perHeadAmount = useMemo(() => {
     if (!amount || playedIds.length === 0) return null;
     return Math.round(Number(amount) / playedIds.length);
   }, [amount, playedIds]);
 
+  /* ================= CONFIRMATION STATUS ================= */
+  const confirmations = session.attendance?.confirmations || {};
+
+  const getConfirmationStatus = (uid) => {
+    return confirmations[uid] || null; // CONFIRMED | PENDING | REJECTED | null
+  };
+
+
   /* ================= LISTENERS ================= */
+
+  {/* ===== listenVotesDetailed ===== */ }
   useEffect(() => {
     if (!session?.id) return;
     return listenVotesDetailed(session.id, list =>
@@ -101,11 +171,34 @@ export default function LiveVotingDashboard({ session }) {
     );
   }, [session.id]);
 
+  {/* ===== listenActiveUsers ===== */ }
   useEffect(() => {
     return listenActiveUsers(list =>
       setUsers(Array.isArray(list) ? list : [])
     );
   }, []);
+
+  {/* ===== attendance ===== */ }
+  useEffect(() => {
+    if (!liveSession?.attendance?.confirmations || !user?.uid) return;
+
+    const status = liveSession.attendance.confirmations[user.uid];
+
+    if (status === "PENDING") {
+      setMyAttendanceStatus(status);
+      setShowConfirmPopup(true);
+    }
+  }, [session.attendance, user.uid]);
+
+  {/* ===== listen Live Session===== */ }
+  useEffect(() => {
+    if (!session?.id) return;
+
+    return listenSession(session.id, (updatedSession) => {
+      setLiveSession(updatedSession);
+    });
+  }, [session.id]);
+
 
   /* ================= TIMER ================= */
   useEffect(() => {
@@ -138,6 +231,10 @@ export default function LiveVotingDashboard({ session }) {
   }, [session.status, session.endTime]);
 
   /* ================= DERIVED ================= */
+  const mismatchedPlayers = playedIds.filter(uid => {
+    const v = votes.find(v => v.userId === uid);
+    return v && v.vote !== "PLAYING";
+  });
 
   const availableUsers = useMemo(() => {
     if (!session.eventDate) return users;
@@ -149,7 +246,6 @@ export default function LiveVotingDashboard({ session }) {
   const currentUser = useMemo(() => {
     return users.find(u => u.uid === user.uid);
   }, [users, user.uid]);
-
 
   const playing = votes.filter(
     v =>
@@ -171,7 +267,31 @@ export default function LiveVotingDashboard({ session }) {
 
   const myVote = votes.find(v => v.userId === user.uid)?.vote;
 
+  /* ================= ATTENDANCE INTELLIGENCE ================= */
+
+  const votedPlayingIds = playing.map(v => v.userId);
+  const votedNotPlayingIds = notPlaying.map(v => v.userId);
+  const actuallyPlayedIds = playedIds;
+
+  // ✅ Correct players (voted PLAYING & played)
+  const correctPlayers = actuallyPlayedIds.filter(id =>
+    votedPlayingIds.includes(id)
+  );
+
+  // 🟡 Played but didn’t vote
+  const playedButDidntVote = actuallyPlayedIds.filter(id =>
+    !votedPlayingIds.includes(id) &&
+    !votedNotPlayingIds.includes(id)
+  );
+
+  // 🔴 No-show players (voted PLAYING but didn’t play)
+  const noShowPlayers = votedPlayingIds.filter(id =>
+    !actuallyPlayedIds.includes(id)
+  );
+
+
   /* ================= ACTIONS ================= */
+
   const saveBooking = async () => {
     await updateSessionBooking(session.id, {
       venue,
@@ -195,83 +315,106 @@ export default function LiveVotingDashboard({ session }) {
   };
 
   const saveAttendance = async () => {
-    await updateSessionAttendance(session.id, playedIds);
+    await updateSessionAttendance(session.id, playedIds, votes);
 
     setSnackbar({
       open: true,
-      message: "✅ Attendance & payment split saved",
+      message: "✅ Attendance saved. Players can now confirm.",
       severity: "success"
     });
   };
+
 
   /* ================= WHATSAPP SHARE ================= */
   const shareOnWhatsApp = () => {
     const link = `${window.location.origin}/dashboard`;
 
-    const names = arr =>
-      arr
-        .map(v => {
-          const u = getUser(v.userId);
-          return u?.profile?.nickname || u?.name || v.name;
-        })
-        .join(", ");
+    const getName = uid => {
+      const u = getUser(uid);
+      return u?.profile?.nickname || u?.name || "Unknown";
+    };
 
-    const playingNames = names(playing);
-    const notPlayingNames = names(notPlaying);
-    const didntVoteNames = didntVote
-      .map(u => u.profile?.nickname || u.name)
-      .join(", ");
+    const playingNames = playing.map(v => getName(v.userId)).join(", ");
+    const notPlayingNames = notPlaying.map(v => getName(v.userId)).join(", ");
+    const didntVoteNames = didntVote.map(u => u.profile?.nickname || u.name).join(", ");
+
+    const playedIds = session.attendance?.playedUserIds || [];
+    const actuallyPlayedNames = playedIds.map(getName).join(", ");
+
+    const didntVoteButPlayed = playedIds.filter(
+      id => !votes.some(v => v.userId === id)
+    );
+    const didntVoteButPlayedNames = didntVoteButPlayed.map(getName).join(", ");
+
+    const noShowPlayers = playing
+      .map(v => v.userId)
+      .filter(id => !playedIds.includes(id));
+    const noShowNames = noShowPlayers.map(getName).join(", ");
 
     let msg = "";
 
-    /* ================= PHASE 1: VOTING JUST OPENED ================= */
-    if (session.status === "OPEN" && votes.length === 0 && isAdmin) {
+    // ✅ IMPROVED Phase-1 detection (fresh voting)
+    const isFreshVoting =
+      session.status === "OPEN" &&
+      (votes.length === 0 || playing.length === 0 && notPlaying.length === 0);
+
+    /* ===========================
+       🟢 PHASE 1 — Voting Open
+    =========================== */
+    if (isFreshVoting) {
       msg = `
-🏸✨ *Voting Open!*
+🏸✨ *Voting Open*
 
 📅 ${formatDate(session.eventDate)}
-🗳 *${session.title}*
-
-Kindly cast your vote 👇
-🔗 ${link}
-`;
-    }
-
-    /* ================= PHASE 2: VOTING IN PROGRESS ================= */
-    else if (session.status === "OPEN") {
-      msg = `
-🏸 *Voting Update*
-
-🟢 Playing: ${playingNames || "-"}
-🔴 Not Playing: ${notPlayingNames || "-"}
-⚪ Didn’t Vote: ${didntVoteNames || "-"}
+🗳 ${session.title}
 
 Vote now 👇
-🔗 ${link}
-`;
-    }
-
-    /* ================= PHASE 3: VOTING CLOSED ================= */
-    else if (session.status === "CLOSED") {
-      msg = `
-🏸✨ *FINAL VOTING RESULT*
-
-━━━━━━━━━━━━━━
-📅 ${formatDate(session.eventDate)}
-🗳 *${session.title}*
-━━━━━━━━━━━━━━
-
-🟢 *Playing Players*
-${playingNames || "—"}
-
-📌 Voting is now closed.
-
-🔍 View full details here:
 ${link}
 `;
     }
 
-    // 🔥 FINAL STEP: OPEN WHATSAPP
+    /* ===========================
+       🟡 PHASE 2 — Voting In Progress
+    =========================== */
+    else if (session.status === "OPEN") {
+      msg = `
+🏸 *Live Voting Update*
+
+📅 ${formatDate(session.eventDate)}
+🗳 ${session.title}
+
+🟢 Playing (${playing.length}): ${playingNames || "-"}
+🔴 Not Playing (${notPlaying.length}): ${notPlayingNames || "-"}
+⚪ Didn’t Vote (${didntVote.length}): ${didntVoteNames || "-"}
+
+Vote here 👇
+${link}
+`;
+    }
+
+    /* ===========================
+       🔴 PHASE 3 — Voting Closed
+    =========================== */
+    else if (session.status === "CLOSED") {
+      msg = `
+🏸✨ *FINAL PLAYERS LIST*
+
+📅 ${formatDate(session.eventDate)}
+🗳 ${session.title}
+
+🟢 Playing (${playing.length})
+${playingNames || "-"}
+
+🎾 Attendance Summary
+✅ Played (${playedIds.length}): ${actuallyPlayedNames || "-"}
+🟡 Didn’t Vote but Played (${didntVoteButPlayed.length}): ${didntVoteButPlayedNames || "-"}
+🔴 No Show (${noShowPlayers.length}): ${noShowNames || "-"}
+
+See details 👇
+${link}
+`;
+    }
+
     if (!msg.trim()) return;
 
     window.open(
@@ -280,144 +423,111 @@ ${link}
     );
   };
 
+
   /* ================= UI ================= */
+
   return (
-    <Card sx={{ p: 3, mb: 3, borderRadius: 3 }}>
+    <Card sx={{ p: 2.2, mb: 3, borderRadius: 3 }}>
 
-      {/* ===== HEADER ===== */}
-      {session.eventDate && (
-        <Typography fontWeight="bold">
-          📅 {formatDate(session.eventDate)}
-        </Typography>
-      )}
-
-      <Typography>{session.title}</Typography>
-
-      <Typography fontSize={13} color="text.secondary">
-        Voting created on{" "}
-        {dayjs(
-          (session.createdAt || session.startTime).toDate()
-        ).format("DD MMM YYYY, h:mm A")}
-      </Typography>
-
-      <Box mt={1}>
-        <Chip
-          label={session.status === "OPEN" ? "Voting Live" : "Voting Ended"}
-          color={session.status === "OPEN" ? "success" : "error"}
-          size="small"
-        />
-        {timeLeft && session.status === "OPEN" && (
-          <Chip label={`⏱ ${timeLeft}`} size="small" sx={{ ml: 1 }} />
-        )}
-      </Box>
-
-      {/* ===== VOTING ===== */}
-      <Box sx={{ bgcolor: "#f5f9ff", p: 2, borderRadius: 2, mt: 2 }}>
-        {myVote && (
-          <Typography fontWeight="bold" mb={1}>
-            Your vote:{" "}
-            <span style={{ color: myVote === "PLAYING" ? "green" : "red" }}>
-              {myVote}
-            </span>
+      {/* ===== LIVE HEADER ===== */}
+      <Box>
+        {session.eventDate && (
+          <Typography fontWeight="bold" fontSize={15}>
+            📅 {formatDate(session.eventDate)}
           </Typography>
         )}
 
-        {isAdmin && session.status === "OPEN" && !session.archived && (
-          <Button
-            variant="outlined"
-            color="error"
-            onClick={() => endVotingSession(session.id)}
-            sx={{ mb: 2 }}
-          >
-            End Voting
-          </Button>
-        )}
+        <Typography fontWeight={600}>
+          🗳 {session.title}
+        </Typography>
 
-        { /* ============ PLAYER VOTING BUTTONS ===============*/}
+        <Box mt={0.5} display="flex" gap={1} alignItems="center">
+          <Chip
+            label={session.status === "OPEN" ? "Voting Live" : "Voting Ended"}
+            color={session.status === "OPEN" ? "success" : "error"}
+            size="small"
+          />
+          {timeLeft && session.status === "OPEN" && (
+            <Chip label={`⏱ ${timeLeft}`} size="small" />
+          )}
+        </Box>
+      </Box>
 
-        {session.status === "OPEN" && (
-          <>
-            {currentUser && !isUserAvailableForSession(currentUser, session.eventDate) && (
-              <Alert severity="warning" sx={{ mb: 2 }}>
-                🚫 You are unavailable for this session due to{" "}
+      {/* ===== VOTING BUTTONS ===== */}
+      {session.status === "OPEN" && (
+        <Box mt={2}>
+          {currentUser &&
+            !isUserAvailableForSession(currentUser, session.eventDate) && (
+              <Alert severity="warning" sx={{ mb: 1 }}>
+                🚫 You are unavailable due to{" "}
                 <strong>
                   {currentUser.profile?.unavailability?.reason || "rest"}
                 </strong>
-                . Voting is disabled.
+                . Voting disabled.
               </Alert>
             )}
 
-            <Stack direction="row" spacing={2} mb={2}>
-              <Tooltip title="ARE YOU GAME?" arrow>
-                <Box sx={{ flex: 1 }}>
-                  <Button
-                    fullWidth
-                    variant="contained"
-                    color="success"
-                    disabled={
-                      currentUser &&
-                      !isUserAvailableForSession(currentUser, session.eventDate)
-                    }
-                    onClick={() => castVote(session.id, "PLAYING")}
-                    startIcon={<SportsTennisIcon />}
-                  >
-                    PLAYING
-                  </Button>
-                </Box>
-              </Tooltip>
+          <Stack direction="row" spacing={1.5}>
+            <Button
+              fullWidth
+              size="large"
+              variant="contained"
+              color="success"
+              disabled={
+                !currentUser ||
+                !isUserAvailableForSession(currentUser, session.eventDate)
+              }
+              onClick={() => castVote(session.id, "PLAYING")}
+              startIcon={<SportsTennisIcon />}
+              sx={{
+                py: 1.4,
+                fontWeight: "bold",
+                fontSize: 14,
+                borderRadius: 2,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                textTransform: "none"
+              }}
+            >
+              PLAYING ({playing.length})
+            </Button>
 
-              <Box sx={{ flex: 1 }}>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  color="error"
-                  disabled={
-                    currentUser &&
-                    !isUserAvailableForSession(currentUser, session.eventDate)
-                  }
-                  onClick={() => castVote(session.id, "NOT_PLAYING")}
-                >
-                  NOT PLAYING
-                </Button>
-              </Box>
-            </Stack>
-          </>
-        )}
+            <Button
+              fullWidth
+              size="large"
+              variant="contained"
+              color="error"
+              disabled={
+                !currentUser ||
+                !isUserAvailableForSession(currentUser, session.eventDate)
+              }
+              onClick={() => castVote(session.id, "NOT_PLAYING")}
+              sx={{
+                py: 1.4,
+                fontWeight: "bold",
+                fontSize: 14,
+                borderRadius: 2,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                textTransform: "none"
+              }}
+            >
+              NOT PLAYING ({notPlaying.length})
+            </Button>
+          </Stack>
+        </Box>
+      )}
 
-
-
-        {/* ===== VOTE SUMMARY ===== */}
-        {[
-          ["🟢 Playing", playing],
-          ["🔴 Not Playing", notPlaying],
-          ["⚪ Didn’t Vote", didntVote]
-        ].map(([label, list]) => (
-          <Accordion key={label}>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              {label} ({list.length})
-            </AccordionSummary>
-            <AccordionDetails>
-              {list.map(v => {
-                const u = v.userId ? getUser(v.userId) : v;
-                return (
-                  <Typography key={u.uid || v.userId}>
-                    •{" "}
-                    <DisplayName
-                      name={u.name}
-                      nickname={u.profile?.nickname}
-                      role={u.role}
-                    />
-                  </Typography>
-                );
-              })}
-            </AccordionDetails>
-          </Accordion>
-        ))}
-      </Box>
+      {myVote && (
+        <Typography mt={1} fontSize={13}>
+          Your vote:{" "}
+          <b style={{ color: myVote === "PLAYING" ? "green" : "red" }}>
+            {myVote}
+          </b>
+        </Typography>
+      )}
 
       {/* ===== BOOKING ===== */}
-      <Box sx={{ bgcolor: "#f7fff5", p: 2, borderRadius: 2, mt: 3 }}>
-        <Typography fontWeight="bold">📍 Booking Details</Typography>
+      <Box sx={{ mt: 2.2, p: 1.6, bgcolor: "#f7fff5", borderRadius: 2 }}>
+        <Typography fontWeight="bold">📍 Booking</Typography>
 
         {isAdmin ? (
           <Stack spacing={1} mt={1}>
@@ -434,30 +544,50 @@ ${link}
               value={amount}
               onChange={e => setAmount(e.target.value)}
             />
-            <Button variant="contained" onClick={saveBooking}>
-              Save Booking
+            <Button size="small" variant="contained" onClick={saveBooking}>
+              Save
             </Button>
           </Stack>
         ) : session.booking ? (
-          <Box mt={1}>
-            <Typography>Venue: {session.booking.venue}</Typography>
-            <Typography>Amount Paid: ₹{session.booking.amount}</Typography>
+          <Box mt={0.5}>
+            <Typography fontSize={14}>
+              Venue: {session.booking.venue}
+            </Typography>
+            <Typography fontSize={14}>
+              Amount: ₹{session.booking.amount}
+            </Typography>
           </Box>
         ) : (
-          <Typography color="text.secondary">
-            Booking details not added yet by Admin
+          <Typography fontSize={13} color="text.secondary">
+            Not added yet
           </Typography>
         )}
       </Box>
 
-      {/* ===== ATTENDANCE ===== */}
-      <Box sx={{ bgcolor: "#fffaf2", p: 2, borderRadius: 2, mt: 3 }}>
-        <Typography fontWeight="bold">₹ Payment Details</Typography>
+      {/* ===== PAYMENT ===== */}
+      <Box sx={{ mt: 2, p: 1.6, bgcolor: "#fffaf2", borderRadius: 2 }}>
+        <Typography fontWeight="bold">₹ Payment</Typography>
 
         {isAdmin ? (
           <Stack>
-            {users.map(u => {
+            {availableUsers.map(u => {
               const isPlayed = playedIds.includes(u.uid);
+              const status = getConfirmationStatus(u.uid);
+
+              let statusColor = "#bdbdbd"; // default gray
+              let statusLabel = "";
+
+              if (status === "CONFIRMED") {
+                statusColor = "#2e7d32"; // green
+                statusLabel = "Confirmed";
+              } else if (status === "PENDING") {
+                statusColor = "#f9a825"; // yellow
+                statusLabel = "Pending";
+              } else if (status === "REJECTED") {
+                statusColor = "#c62828"; // red
+                statusLabel = "Rejected";
+              }
+
               return (
                 <FormControlLabel
                   key={u.uid}
@@ -468,60 +598,275 @@ ${link}
                     />
                   }
                   label={
-                    <Box display="flex" gap={1} alignItems="center">
+                    <Box display="flex" gap={1} alignItems="center" flexWrap="wrap">
                       <DisplayName
                         name={u.name}
                         nickname={u.profile?.nickname}
                         role={u.role}
                       />
+
+                      {/* 💰 Per Head Amount */}
                       {isPlayed && perHeadAmount && (
-                        <Typography fontSize={13} color="text.secondary">
+                        <Typography fontSize={12} color="text.secondary">
                           ₹{perHeadAmount}
                         </Typography>
+                      )}
+
+                      {/* ✅ Confirmation Status Chip */}
+                      {isPlayed && statusLabel && (
+                        <Chip
+                          label={statusLabel}
+                          size="small"
+                          sx={{
+                            backgroundColor: statusColor,
+                            color: "white",
+                            borderRadius: "20px",
+                            fontSize: "11px",
+                            height: "20px"
+                          }}
+                        />
                       )}
                     </Box>
                   }
                 />
               );
             })}
-            <Button variant="contained" onClick={saveAttendance}>
-              Save Attendance
+            <Button size="small" variant="contained" onClick={saveAttendance}>
+              Save
             </Button>
+            {/* ===== ADMIN CONFIRMATION SUMMARY ===== */}
+            {playedIds.length > 0 && (
+              <Box mt={2} p={1.2} sx={{ bgcolor: "#f5f7fa", borderRadius: 2 }}>
+
+                {/* 🟢 Confirmed */}
+                <Typography fontSize={13} fontWeight="bold" color="#2e7d32">
+                  🟢 Confirmed Players
+                </Typography>
+                <Box mb={1}>
+                  {playedIds
+                    .filter(id => confirmations[id] === "CONFIRMED")
+                    .map(id => (
+                      <Chip
+                        key={id}
+                        label={getUser(id)?.profile?.nickname || getUser(id)?.name}
+                        size="small"
+                        sx={{
+                          mr: 0.5,
+                          mb: 0.5,
+                          backgroundColor: "#e8f5e9",
+                          color: "#2e7d32",
+                          borderRadius: "20px"
+                        }}
+                      />
+                    ))}
+                </Box>
+
+                {/* 🟡 Pending */}
+                <Typography fontSize={13} fontWeight="bold" color="#f9a825">
+                  🟡 Pending Players
+                </Typography>
+                <Box mb={1}>
+                  {playedIds
+                    .filter(id => confirmations[id] === "PENDING")
+                    .map(id => (
+                      <Chip
+                        key={id}
+                        label={getUser(id)?.profile?.nickname || getUser(id)?.name}
+                        size="small"
+                        sx={{
+                          mr: 0.5,
+                          mb: 0.5,
+                          backgroundColor: "#fff8e1",
+                          color: "#f57f17",
+                          borderRadius: "20px"
+                        }}
+                      />
+                    ))}
+                </Box>
+
+                {/* 🔴 Rejected */}
+                <Typography fontSize={13} fontWeight="bold" color="#c62828">
+                  🔴 Rejected Players
+                </Typography>
+                <Box>
+                  {playedIds
+                    .filter(id => confirmations[id] === "REJECTED")
+                    .map(id => (
+                      <Chip
+                        key={id}
+                        label={getUser(id)?.profile?.nickname || getUser(id)?.name}
+                        size="small"
+                        sx={{
+                          mr: 0.5,
+                          mb: 0.5,
+                          backgroundColor: "#ffebee",
+                          color: "#c62828",
+                          borderRadius: "20px"
+                        }}
+                      />
+                    ))}
+                </Box>
+              </Box>
+            )}
+            {/* ================= ATTENDANCE INTELLIGENCE ================= */}
+            {isAdmin && session.status !== "OPEN" && (
+              <Box mt={2.5} p={2} sx={{ bgcolor: "#f4f6f8", borderRadius: 2 }}>
+
+                <Typography fontWeight="bold" mb={1}>
+                  🎯 Attendance Intelligence
+                </Typography>
+
+                {/* ✅ Correct Players */}
+                <Typography fontSize={13} fontWeight="bold" color="#2e7d32">
+                  ✅ Correct Players ({correctPlayers.length})
+                </Typography>
+                <Box mb={1}>
+                  {correctPlayers.map(id => (
+                    <Chip
+                      key={id}
+                      label={getUser(id)?.profile?.nickname || getUser(id)?.name}
+                      size="small"
+                      sx={{
+                        mr: 0.5,
+                        mb: 0.5,
+                        backgroundColor: "#e8f5e9",
+                        color: "#2e7d32",
+                        borderRadius: "20px"
+                      }}
+                    />
+                  ))}
+                </Box>
+
+                {/* 🟡 Played but didn’t vote */}
+                <Typography fontSize={13} fontWeight="bold" color="#f9a825">
+                  🟡 Played but Didn’t Vote ({playedButDidntVote.length})
+                </Typography>
+                <Box mb={1}>
+                  {playedButDidntVote.map(id => (
+                    <Chip
+                      key={id}
+                      label={getUser(id)?.profile?.nickname || getUser(id)?.name}
+                      size="small"
+                      sx={{
+                        mr: 0.5,
+                        mb: 0.5,
+                        backgroundColor: "#fff8e1",
+                        color: "#f57f17",
+                        borderRadius: "20px"
+                      }}
+                    />
+                  ))}
+                </Box>
+
+                {/* 🔴 No Show Players */}
+                <Typography fontSize={13} fontWeight="bold" color="#c62828">
+                  🔴 No Show Players ({noShowPlayers.length})
+                </Typography>
+                <Box>
+                  {noShowPlayers.map(id => (
+                    <Chip
+                      key={id}
+                      label={getUser(id)?.profile?.nickname || getUser(id)?.name}
+                      size="small"
+                      sx={{
+                        mr: 0.5,
+                        mb: 0.5,
+                        backgroundColor: "#ffebee",
+                        color: "#c62828",
+                        borderRadius: "20px"
+                      }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            )}
           </Stack>
         ) : playedIds.length > 0 ? (
-          <Stack mt={1}>
-            {playedIds.map(uid => {
-              const u = getUser(uid);
-              return (
-                <Typography key={uid}>
-                  •{" "}
-                  <DisplayName
-                    name={u?.name}
-                    nickname={u?.profile?.nickname}
-                    role={u?.role}
-                  />{" "}
-                  – ₹{perHeadAmount}
-                </Typography>
-              );
-            })}
-          </Stack>
+          <Typography fontSize={14} mt={0.5}>
+            Per Head: ₹{perHeadAmount}
+          </Typography>
         ) : (
-          <Typography color="text.secondary">
-            Payment details not added yet by Admin
+          <Typography fontSize={13} color="text.secondary">
+            Not added yet
           </Typography>
         )}
       </Box>
 
-      {/* ===== HISTORY ACTIONS ===== */}
+      {/* ===== PLAYER ATTENDANCE CONFIRM BUTTON ===== */}
+      {shouldShowConfirmButton && (
+        <Box mt={2}>
+          <Button
+            fullWidth
+            variant="contained"
+            sx={{
+              background: "linear-gradient(135deg,#ff9800,#f57c00)",
+              color: "white",
+              fontWeight: "bold",
+              borderRadius: 2
+            }}
+            onClick={() => setOpenConfirmDialog(true)}
+          >
+            🏸 Confirm My Attendance
+          </Button>
+        </Box>
+      )}
+
+
+      {/* ===== DETAILS (BOTTOM) ===== */}
+      <Accordion sx={{ mt: 2 }}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          👥 View Player Details
+        </AccordionSummary>
+        <AccordionDetails>
+          {[
+            ["🟢 Playing", playing],
+            ["🔴 Not Playing", notPlaying],
+            ["⚪ Didn’t Vote", didntVote]
+          ].map(([label, list]) => (
+            <Box key={label} mb={1}>
+              <Typography fontWeight="bold">
+                {label} ({list.length})
+              </Typography>
+              {list.map(v => {
+                const u = v.userId ? getUser(v.userId) : v;
+                return (
+                  <Typography key={u.uid || v.userId} fontSize={14}>
+                    •{" "}
+                    <DisplayName
+                      name={u.name}
+                      nickname={u.profile?.nickname}
+                      role={u.role}
+                    />
+                  </Typography>
+                );
+              })}
+            </Box>
+          ))}
+        </AccordionDetails>
+      </Accordion>
+
+
+      {/* ===== ADMIN ACTIONS ===== */}
+      {isAdmin && session.status === "OPEN" && (
+        <Button
+          variant="contained"
+          color="error"
+          sx={{ mt: 2 }}
+          onClick={() => endVotingSession(session.id)}
+        >
+          🛑 End Voting
+        </Button>
+      )}
+
       {isAdmin &&
         session.status === "CLOSED" &&
         session.archived !== true && (
           <Button
             variant="outlined"
-            sx={{ mt: 3 }}
+            sx={{ mt: 2 }}
             onClick={() => moveSessionToHistory(session.id)}
           >
-            Move to History
+            📜 Move to History
           </Button>
         )}
 
@@ -537,10 +882,12 @@ ${link}
             )
           }
         >
-          Reopen Session
+          ♻️ Reopen Session
         </Button>
       )}
 
+
+      {/* ===== SHARE ===== */}
       <Button
         variant="outlined"
         fullWidth
@@ -549,6 +896,41 @@ ${link}
       >
         📤 Share on WhatsApp
       </Button>
+
+      {/* ===== ATTENDANCE CONFIRMATION DIALOG ===== */}
+      <Dialog open={openConfirmDialog} onClose={() => setOpenConfirmDialog(false)}>
+        <DialogTitle>🏸 Attendance Confirmation</DialogTitle>
+        <DialogContent>
+          <Typography fontSize={14}>
+            Admin marked you as <b>PLAYING</b>.
+            <br />
+            Did you actually play this game?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            color="error"
+            onClick={async () => {
+              await confirmAttendance(session.id, user.uid, "REJECTED");
+              setOpenConfirmDialog(false);
+            }}
+          >
+            ❌ No, I didn’t play
+          </Button>
+
+          <Button
+            variant="contained"
+            sx={{ backgroundColor: "#2e7d32" }}
+            onClick={async () => {
+              await confirmAttendance(session.id, user.uid, "CONFIRMED");
+              setOpenConfirmDialog(false);
+            }}
+          >
+            ✅ Yes, I played
+          </Button>
+        </DialogActions>
+      </Dialog>
+
 
       {/* ===== SNACKBAR ===== */}
       <Snackbar

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { auth } from "../services/firebase";
 import {
   signInWithEmailAndPassword,
@@ -19,7 +19,12 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 🔹 Listen to auth changes
+  // ⏱️ timers (important to avoid multiple timers)
+  const idleTimerRef = useRef(null);
+
+  /* =====================================================
+     🔐 AUTH STATE LISTENER
+  ===================================================== */
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
@@ -32,7 +37,7 @@ export const AuthProvider = ({ children }) => {
         const userRef = doc(db, "users", firebaseUser.uid);
         const snap = await getDoc(userRef);
 
-        // 🛡️ SAFE AUTO-CREATE (ONE TIME ONLY)
+        // 🛡️ SAFE AUTO-CREATE USER (ONE TIME)
         if (!snap.exists()) {
           await setDoc(userRef, {
             name:
@@ -70,8 +75,14 @@ export const AuthProvider = ({ children }) => {
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           name: data.name,
-          role: data.role, // SUPER_ADMIN | ADMIN | PLAYER
+          role: data.role,
         });
+
+        // 🧠 store login time (for session expiry)
+        if (!localStorage.getItem("loginTime")) {
+          localStorage.setItem("loginTime", Date.now());
+          console.log("✅ loginTime set:", Date.now());
+        }
       } catch (err) {
         console.error("Auth load error:", err);
         await signOut(auth);
@@ -84,7 +95,63 @@ export const AuthProvider = ({ children }) => {
     return () => unsubscribe();
   }, []);
 
-  // 🔹 Login
+  /* =====================================================
+     ⏱️ AUTO LOGOUT SYSTEM (IDLE + SESSION EXPIRY)
+  ===================================================== */
+  useEffect(() => {
+  if (!user) return;
+
+  const IDLE_LIMIT = 30 * 60 * 1000; // 30 min
+  const SESSION_LIMIT = 24 * 60 * 60 * 1000; //24 hours
+
+  const logoutWithMessage = async (msg) => {
+    alert(msg);
+    await logout();
+  };
+
+  const resetIdleTimer = () => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+
+    idleTimerRef.current = setTimeout(() => {
+      logoutWithMessage("🔒 Logged out due to inactivity.");
+    }, IDLE_LIMIT);
+  };
+
+  const checkSessionExpiry = () => {
+    const loginTime = Number(localStorage.getItem("loginTime"));
+
+    console.log("⏱ Session Check:", Date.now() - loginTime);
+
+    if (loginTime && Date.now() - loginTime > SESSION_LIMIT) {
+      logoutWithMessage("🔒 Session expired. Please login again.");
+    }
+  };
+
+  const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+
+  events.forEach(event =>
+    window.addEventListener(event, resetIdleTimer)
+  );
+
+  resetIdleTimer();
+  checkSessionExpiry();
+
+  const sessionInterval = setInterval(checkSessionExpiry, 3000); // every 3 sec
+
+  return () => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    clearInterval(sessionInterval);
+
+    events.forEach(event =>
+      window.removeEventListener(event, resetIdleTimer)
+    );
+  };
+}, [user]);
+
+
+  /* =====================================================
+     🔹 LOGIN
+  ===================================================== */
   const login = async (email, password) => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
@@ -95,7 +162,9 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // 🔹 Logout (IMPORTANT: mark offline)
+  /* =====================================================
+     🔹 LOGOUT (IMPORTANT: mark offline)
+  ===================================================== */
   const logout = async () => {
     try {
       if (auth.currentUser) {
@@ -106,6 +175,7 @@ export const AuthProvider = ({ children }) => {
         );
       }
 
+      localStorage.removeItem("loginTime"); // 🧹 clear session time
       await signOut(auth);
       setUser(null);
     } catch (err) {
@@ -114,9 +184,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider
-      value={{ user, login, logout, loading }}
-    >
+    <AuthContext.Provider value={{ user, login, logout, loading }}>
       {!loading && children}
     </AuthContext.Provider>
   );

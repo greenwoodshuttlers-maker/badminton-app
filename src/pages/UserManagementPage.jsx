@@ -4,167 +4,271 @@ import {
   Card,
   Typography,
   Button,
-  Stack,
-  CircularProgress
+  Chip,
+  TextField,
+  Select,
+  MenuItem,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Switch,
+  useMediaQuery
 } from "@mui/material";
-import {
-  collection,
-  onSnapshot,
-  doc,
-  updateDoc
-} from "firebase/firestore";
-import { useNavigate } from "react-router-dom";
-
+import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
 import { db } from "../services/firebase";
 import { useAuth } from "../context/AuthContext";
+import { useNavigate } from "react-router-dom";
+import { useTheme } from "@mui/material/styles";
 
 export default function UserManagementPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
-  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const isAdmin =
+    user.role === "ADMIN" || user.role === "SUPER_ADMIN";
 
   const [users, setUsers] = useState([]);
-  const [updatingId, setUpdatingId] = useState(null);
+  const [search, setSearch] = useState("");
 
-  /* ================= LOAD USERS ================= */
   useEffect(() => {
-    if (!isSuperAdmin) return;
+    if (!isAdmin) return;
 
-    const unsub = onSnapshot(collection(db, "users"), snap => {
+    const loadUsers = async () => {
+      const snap = await getDocs(collection(db, "users"));
       const list = snap.docs.map(d => ({
-        id: d.id,
+        uid: d.id,
         ...d.data()
       }));
       setUsers(list);
-    });
+    };
 
-    return () => unsub();
-  }, [isSuperAdmin]);
+    loadUsers();
+  }, [isAdmin]);
 
-  /* ================= TOGGLE ROLE ================= */
-const toggleRole = async (targetUser) => {
-  if (targetUser.id === user.uid) {
-    alert("You cannot change your own role.");
-    return;
-  }
-
-  const newRole =
-    targetUser.role === "ADMIN" ? "PLAYER" : "ADMIN";
-
-  try {
-    setUpdatingId(targetUser.id);
-
-    // ✅ OPTIMISTIC UI UPDATE (instant)
-    setUsers(prev =>
-      prev.map(u =>
-        u.id === targetUser.id
-          ? { ...u, role: newRole }
-          : u
-      )
-    );
-
-    // 🔄 Firestore update (authoritative)
-    await updateDoc(
-      doc(db, "users", targetUser.id),
-      { role: newRole }
-    );
-
-  } catch (err) {
-    console.error("Role update failed:", err);
-    alert("Failed to update role.");
-
-    // 🔙 Rollback if something went wrong
-    setUsers(prev =>
-      prev.map(u =>
-        u.id === targetUser.id
-          ? { ...u, role: targetUser.role }
-          : u
-      )
-    );
-  } finally {
-    setUpdatingId(null);
-  }
-};
-
-
-  /* ================= ACCESS DENIED ================= */
-  if (!isSuperAdmin) {
+  if (!isAdmin) {
     return (
-      <Box p={3}>
-        <Button
-          variant="outlined"
-          onClick={() => navigate("/dashboard")}
-        >
-          ← Back to Dashboard
-        </Button>
-
-        <Typography color="error" mt={3}>
-          Access denied. Only Super Admin can manage users.
-        </Typography>
+      <Box p={2}>
+        <Typography>⛔ Access Denied</Typography>
       </Box>
     );
   }
 
+  const updateUser = async (uid, data) => {
+    await updateDoc(doc(db, "users", uid), data);
+
+    setUsers(prev =>
+      prev.map(u =>
+        u.uid === uid ? { ...u, ...data } : u
+      )
+    );
+  };
+
+  const filteredUsers = users.filter(u =>
+    (u.name || "")
+      .toLowerCase()
+      .includes(search.toLowerCase())
+  );
+
+  const renderRoleSelect = (u) => {
+    // 🛡️ SUPER_ADMIN role is locked (no UI change allowed)
+    if (u.role === "SUPER_ADMIN") {
+      return (
+        <Chip
+          label="SUPER_ADMIN"
+          size="small"
+          sx={{
+            backgroundColor: "#ede7f6",
+            color: "#4a148c",
+            fontWeight: "bold"
+          }}
+        />
+      );
+    }
+
+    return (
+      <Select
+        size="small"
+        value={u.role}
+        fullWidth={isMobile}
+        onChange={e =>
+          updateUser(u.uid, {
+            role: e.target.value
+          })
+        }
+      >
+        <MenuItem value="PLAYER">PLAYER</MenuItem>
+        <MenuItem value="ADMIN">ADMIN</MenuItem>
+      </Select>
+    );
+  };
+
+
+  const renderStatusChip = (u) => (
+    <Chip
+      label={u.status}
+      size="small"
+      sx={{
+        backgroundColor:
+          u.status === "ACTIVE"
+            ? "#d4edda"
+            : "#f8d7da",
+        color:
+          u.status === "ACTIVE"
+            ? "#155724"
+            : "#721c24"
+      }}
+    />
+  );
+
   return (
-    <Box p={2}>
-      {/* ================= HEADER ================= */}
-      <Stack direction="row" spacing={2} mb={3}>
+    <Box p={2} maxWidth={1000} mx="auto">
+      <Card sx={{ p: 2.5, borderRadius: 3 }}>
+
+        {/* 🔙 Back */}
         <Button
           variant="outlined"
+          size="small"
           onClick={() => navigate("/dashboard")}
+          sx={{ mb: 1 }}
         >
           ← Back to Dashboard
         </Button>
-      </Stack>
 
-      <Typography variant="h5" mb={2}>
-        User Management
-      </Typography>
+        <Typography fontWeight="bold" fontSize={18}>
+          🛠 User Management
+        </Typography>
 
-      <Typography color="text.secondary" mb={3}>
-        Promote or demote users between Player and Admin.
-      </Typography>
+        {/* 🔍 Search */}
+        <TextField
+          size="small"
+          fullWidth
+          placeholder="Search player name..."
+          sx={{ mt: 1.5, mb: 2 }}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
 
-      {users.map(u => (
-        <Card key={u.id} sx={{ p: 2, mb: 2 }}>
-          <Stack
-            direction="row"
-            spacing={2}
-            alignItems="center"
-            justifyContent="space-between"
-          >
-            <Box>
-              <Typography fontWeight="bold">
-                {u.name || "Unnamed User"}
-              </Typography>
-              <Typography color="text.secondary">
-                {u.email}
-              </Typography>
-            </Box>
+        {/* ================= DESKTOP TABLE ================= */}
+        {!isMobile && (
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Name</TableCell>
+                <TableCell>Email</TableCell>
+                <TableCell>Role</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell align="center">Active?</TableCell>
+              </TableRow>
+            </TableHead>
 
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Typography>
-                Role: <b>{u.role}</b>
-              </Typography>
+            <TableBody>
+              {filteredUsers.map(u => (
+                <TableRow key={u.uid}>
+                  <TableCell>
+                    <Chip
+                      label={u.name}
+                      size="small"
+                      sx={{
+                        backgroundColor:
+                          u.role === "SUPER_ADMIN"
+                            ? "#ede7f6"
+                            : u.role === "ADMIN"
+                              ? "#e3f2fd"
+                              : "#f1f8e9",
+                        mr: 0.5
+                      }}
+                    />
+                  </TableCell>
 
-              {u.role !== "SUPER_ADMIN" && (
-                <Button
-                  variant="outlined"
-                  disabled={updatingId === u.id}
-                  onClick={() => toggleRole(u)}
+                  <TableCell>{u.email}</TableCell>
+                  <TableCell>{renderRoleSelect(u)}</TableCell>
+                  <TableCell>{renderStatusChip(u)}</TableCell>
+
+                  <TableCell align="center">
+                    <Switch
+                      checked={u.status === "ACTIVE"}
+                      onChange={e =>
+                        updateUser(u.uid, {
+                          status: e.target.checked
+                            ? "ACTIVE"
+                            : "INACTIVE"
+                        })
+                      }
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+
+        {/* ================= MOBILE CARDS ================= */}
+        {isMobile && (
+          <Box>
+            {filteredUsers.map(u => (
+              <Card
+                key={u.uid}
+                sx={{
+                  p: 1.8,
+                  mb: 1.5,
+                  borderRadius: 2,
+                  boxShadow: "0 6px 16px rgba(0,0,0,0.06)"
+                }}
+              >
+                <Typography fontWeight="bold">
+                  👤 {u.name}
+                </Typography>
+
+                <Typography fontSize={12} color="text.secondary">
+                  {u.email}
+                </Typography>
+
+                <Box mt={1} display="flex" gap={1} flexWrap="wrap">
+                  {renderStatusChip(u)}
+                </Box>
+
+                <Box mt={1}>
+                  <Typography fontSize={13}>
+                    Role
+                  </Typography>
+                  {renderRoleSelect(u)}
+                </Box>
+
+                <Box
+                  mt={1}
+                  display="flex"
+                  justifyContent="space-between"
+                  alignItems="center"
                 >
-                  {updatingId === u.id ? (
-                    <CircularProgress size={18} />
-                  ) : (
-                    `Make ${u.role === "ADMIN" ? "Player" : "Admin"}`
-                  )}
-                </Button>
-              )}
-            </Stack>
-          </Stack>
-        </Card>
-      ))}
+                  <Typography fontSize={13}>
+                    Active
+                  </Typography>
+                  <Switch
+                    checked={u.status === "ACTIVE"}
+                    onChange={e =>
+                      updateUser(u.uid, {
+                        status: e.target.checked
+                          ? "ACTIVE"
+                          : "INACTIVE"
+                      })
+                    }
+                  />
+                </Box>
+              </Card>
+            ))}
+          </Box>
+        )}
+
+        {filteredUsers.length === 0 && (
+          <Typography fontSize={13} color="text.secondary" mt={2}>
+            No users found.
+          </Typography>
+        )}
+      </Card>
     </Box>
   );
 }

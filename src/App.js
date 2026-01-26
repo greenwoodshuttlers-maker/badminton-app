@@ -6,6 +6,10 @@ import HistoryPage from "./pages/HistoryPage";
 import UserManagementPage from "./pages/UserManagementPage";
 import ProfilePage from "./pages/ProfilePage";
 import Players from "./pages/Players";
+import ClubExpensesDashboard from "./pages/ClubExpensesDashboard";
+import BreakfastPage from "./pages/BreakfastPage";
+import BreakfastHistoryPage from "./pages/BreakfastHistoryPage";
+
 
 
 
@@ -39,6 +43,11 @@ function App() {
         <Route path="*" element={<Navigate to="/" />} />
         <Route path="/users" element={<UserManagementPage />} />
         <Route path="/players" element={<Players />} />
+        <Route path="/club-expenses" element={<ClubExpensesDashboard />} />
+        <Route path="/club-expenses/breakfast" element={<BreakfastPage />} />
+        <Route path="/club-expenses/breakfast-history" element={<BreakfastHistoryPage />} />
+
+
 
       </Routes>
     </BrowserRouter>

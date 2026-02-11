@@ -30,6 +30,8 @@ import { db } from "../services/firebase";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import { buildWhatsAppMessage } from "../utils/whatsappShareBuilder";
+
 
 export default function DashboardPage() {
   const { user, logout } = useAuth();
@@ -93,102 +95,76 @@ export default function DashboardPage() {
   /* =====================================================
      🔥 SHARE ALL VOTING ON WHATSAPP (PLAYING ONLY)
   ===================================================== */
-  const shareAllVotingOnWhatsApp = async () => {
-    if (dashboardSessions.length === 0) return;
+const shareAllVotingOnWhatsApp = async () => {
+  if (!dashboardSessions.length) return;
 
-    const usersSnap = await getDocs(collection(db, "users"));
-    const userMap = {};
-    usersSnap.docs.forEach(doc => {
-      const d = doc.data();
-      userMap[doc.id] =
-        d.profile?.nickname || d.name || "Unknown";
-    });
+  // 🏸 Session separator
+  const SESSION_SEPARATOR =
+    "\n\n🏸━━━━━━━━━━━━🏸\n\n";
 
-    const getName = uid => userMap[uid] || "Unknown";
+  // ✅ Load players once
+  const usersSnap = await getDocs(
+    collection(db, "users")
+  );
 
-    let message = "🏸 *Badminton Club – Live Voting*\n\n";
+  const playersMap = {};
+  usersSnap.docs.forEach(d => {
+    playersMap[d.id] = d.data();
+  });
 
-    for (const session of dashboardSessions) {
-      const votesSnap = await getDocs(
-        collection(db, "voting_sessions", session.id, "votes")
-      );
+  // ✅ Build messages safely
+  const messages = [];
 
-      const votes = votesSnap.docs.map(d => d.data());
-
-      const playing = votes.filter(v => v.vote === "PLAYING");
-      const notPlaying = votes.filter(v => v.vote === "NOT_PLAYING");
-
-      const votedIds = new Set(votes.map(v => v.userId));
-
-      const allUsers = Object.keys(userMap);
-      const didntVote = allUsers.filter(uid => !votedIds.has(uid));
-
-      const playingNames = playing.map(v => getName(v.userId)).join(", ");
-      const notPlayingNames = notPlaying.map(v => getName(v.userId)).join(", ");
-      const didntVoteNames = didntVote.map(getName).join(", ");
-
-      const playedIds = session.attendance?.playedUserIds || [];
-      const actuallyPlayedNames = playedIds.map(getName).join(", ");
-
-      const didntVoteButPlayed = playedIds.filter(
-        id => !votes.some(v => v.userId === id)
-      );
-      const didntVoteButPlayedNames = didntVoteButPlayed.map(getName).join(", ");
-
-      const noShowPlayers = playing
-        .map(v => v.userId)
-        .filter(id => !playedIds.includes(id));
-      const noShowNames = noShowPlayers.map(getName).join(", ");
-
-      const dateStr = session.eventDate?.toDate
-        ? dayjs(session.eventDate.toDate()).format("DD MMM YYYY")
-        : "";
-
-      message += `📅 *${session.title}*\n`;
-      message += `🗓 ${dateStr}\n\n`;
-
-      // 🟢 PHASE 1 — Voting Open (no votes yet)
-      const isFreshVoting =
-        session.status === "OPEN" &&
-        playing.length === 0 &&
-        notPlaying.length === 0;
-
-      if (isFreshVoting) {
-        message += `🏸✨ *Voting Open*\n`;
-        message += `Vote now 👇\n\n`;
-      }
-
-      // 🟡 PHASE 2 — Voting Live
-      else if (session.status === "OPEN") {
-        message += `🟢 Playing (${playing.length}): ${playingNames || "-"}\n`;
-        message += `🔴 Not Playing (${notPlaying.length}): ${notPlayingNames || "-"}\n`;
-        message += `⚪ Didn’t Vote (${didntVote.length}): ${didntVoteNames || "-"}\n\n`;
-      }
-
-      // 🔴 PHASE 3 — Voting Closed
-      else if (session.status === "CLOSED") {
-        message += `🏸✨ *FINAL PLAYERS LIST*\n`;
-        message += `🟢 Playing (${playing.length}): ${playingNames || "-"}\n\n`;
-
-        if (playedIds.length > 0) {
-          message += `🎾 Attendance Summary\n`;
-          message += `✅ Played (${playedIds.length}): ${actuallyPlayedNames || "-"}\n`;
-          message += `🟡 Didn’t Vote but Played (${didntVoteButPlayed.length}): ${didntVoteButPlayedNames || "-"}\n`;
-          message += `🔴 No Show (${noShowPlayers.length}): ${noShowNames || "-"}\n\n`;
-        }
-      }
-
-      message += "--------------------------------\n\n";
-    }
-
-    message += `🔗 Open app:\n${window.location.origin}/dashboard`;
-
-    window.open(
-      "https://wa.me/?text=" + encodeURIComponent(message.trim()),
-      "_blank"
+  for (const session of dashboardSessions) {
+    const votesSnap = await getDocs(
+      collection(
+        db,
+        "voting_sessions",
+        session.id,
+        "votes"
+      )
     );
-  };
 
+    const votes = votesSnap.docs.map(doc => ({
+      userId: doc.id,
+      ...doc.data()
+    }));
+
+    const enrichedSession = {
+      ...session,
+      _votes: votes
+    };
+
+    const encodedMsg =
+      buildWhatsAppMessage(
+        enrichedSession,
+        playersMap
+      );
+
+    if (!encodedMsg) continue;
+
+    messages.push(
+      decodeURIComponent(encodedMsg)
+    );
+  }
+
+  if (!messages.length) return;
+
+  // ✅ Join once
+  let finalMessage =
+    messages.join(SESSION_SEPARATOR);
+
+  // ✅ ONLY ONE LINK AT END
+  finalMessage +=
+    `\n\n👉 Vote & details:\n` +
+    `${window.location.origin}/dashboard`;
+
+  window.open(
+    "https://wa.me/?text=" +
+      encodeURIComponent(finalMessage),
+    "_blank"
+  );
+};
 
   return (
     <Box p={2} maxWidth={900} mx="auto">

@@ -43,6 +43,9 @@ import {
 import {
   listenSession
 } from "../../services/votingService";
+import { generateMatchPoster } from "../../utils/posterGenerator";
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "../../services/firebase";
 
 
 
@@ -421,6 +424,85 @@ ${link}
       "https://wa.me/?text=" + encodeURIComponent(msg.trim()),
       "_blank"
     );
+  };
+
+  /* ================= POSTER WHATSAPP SHARE ================= */
+  const sharePosterOnWhatsApp = async () => {
+
+    try {
+
+      // Load players map
+      const snap = await getDocs(collection(db, "users"));
+
+      const playersMap = {};
+
+      snap.forEach(doc => {
+        playersMap[doc.id] = doc.data();
+      });
+
+      const getName = uid => {
+        const u = playersMap[uid];
+        return u?.profile?.nickname || u?.name || "";
+      };
+
+      // Use ACTUAL played players if attendance saved
+      const playedIds = session.attendance?.playedUserIds || [];
+
+      const playerNames = playedIds.map(getName);
+
+      const venue = session.booking?.venue || "Court";
+      const amount = session.booking?.amount || 0;
+
+      const perHead =
+        playedIds.length > 0
+          ? Math.round(amount / playedIds.length)
+          : 0;
+
+      const date =
+        session.eventDate?.toDate?.().toDateString() || "";
+
+      // Generate poster
+      const dataUrl = await generateMatchPoster({
+        title: session.title,
+        date,
+        venue,
+        amount,
+        players: playerNames,
+        perHead
+      });
+
+      // Convert to file
+      const blob = await (await fetch(dataUrl)).blob();
+
+      const file = new File([blob], "badminton-poster.png", {
+        type: "image/png"
+      });
+
+      // Mobile share supported
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+
+        await navigator.share({
+          files: [file],
+          title: session.title
+        });
+
+      } else {
+
+        // Desktop fallback download
+        const link = document.createElement("a");
+
+        link.href = dataUrl;
+        link.download = `${session.title}-poster.png`;
+
+        link.click();
+      }
+
+    } catch (e) {
+
+      console.error("Poster error:", e);
+
+    }
+
   };
 
 
@@ -894,7 +976,7 @@ ${link}
       )}
 
 
-      {/* ===== SHARE ===== */}
+      {/* ===== SHARE BUTTON ===== */}
       <Button
         variant="outlined"
         fullWidth
@@ -902,6 +984,19 @@ ${link}
         onClick={shareOnWhatsApp}
       >
         📤 Share on WhatsApp
+      </Button>
+
+      {/* ===== SHARE POSTER BUTTON ===== */}
+      <Button
+        variant="contained"
+        onClick={sharePosterOnWhatsApp}
+        sx={{
+          mt: 1,
+          background:
+            "linear-gradient(135deg,#6a11cb,#2575fc)"
+        }}
+      >
+        🖼 Share Poster
       </Button>
 
       {/* ===== ATTENDANCE CONFIRMATION DIALOG ===== */}

@@ -9,6 +9,11 @@ import Players from "./pages/Players";
 import ClubExpensesDashboard from "./pages/ClubExpensesDashboard";
 import BreakfastPage from "./pages/BreakfastPage";
 import BreakfastHistoryPage from "./pages/BreakfastHistoryPage";
+import JerseyVoting from "./pages/JerseyVoting";
+import JerseyDashboard from "./pages/JerseyDashboard";
+import JerseyOrder from "./pages/JerseyOrder";
+import JerseyTop from "./pages/JerseyTop";
+import PlayerPreferences from "./pages/PlayerPreferences";
 
 
 
@@ -46,6 +51,12 @@ function App() {
         <Route path="/club-expenses" element={<ClubExpensesDashboard />} />
         <Route path="/club-expenses/breakfast" element={<BreakfastPage />} />
         <Route path="/club-expenses/breakfast-history" element={<BreakfastHistoryPage />} />
+        <Route path="/jersey-voting" element={<JerseyVoting />} />
+        <Route path="/jersey-dashboard" element={<JerseyDashboard />} />
+        <Route path="/jersey-order" element={<JerseyOrder />} />
+        <Route path="/jersey-top" element={<JerseyTop />} />
+        <Route path="/player-preferences" element={<PlayerPreferences />} />
+
 
 
 

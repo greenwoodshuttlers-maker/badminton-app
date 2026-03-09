@@ -95,76 +95,76 @@ export default function DashboardPage() {
   /* =====================================================
      🔥 SHARE ALL VOTING ON WHATSAPP (PLAYING ONLY)
   ===================================================== */
-const shareAllVotingOnWhatsApp = async () => {
-  if (!dashboardSessions.length) return;
+  const shareAllVotingOnWhatsApp = async () => {
+    if (!dashboardSessions.length) return;
 
-  // 🏸 Session separator
-  const SESSION_SEPARATOR =
-    "\n\n🏸━━━━━━━━━━━━🏸\n\n";
+    // 🏸 Session separator
+    const SESSION_SEPARATOR =
+      "\n\n🏸━━━━━━━━━━━━🏸\n\n";
 
-  // ✅ Load players once
-  const usersSnap = await getDocs(
-    collection(db, "users")
-  );
-
-  const playersMap = {};
-  usersSnap.docs.forEach(d => {
-    playersMap[d.id] = d.data();
-  });
-
-  // ✅ Build messages safely
-  const messages = [];
-
-  for (const session of dashboardSessions) {
-    const votesSnap = await getDocs(
-      collection(
-        db,
-        "voting_sessions",
-        session.id,
-        "votes"
-      )
+    // ✅ Load players once
+    const usersSnap = await getDocs(
+      collection(db, "users")
     );
 
-    const votes = votesSnap.docs.map(doc => ({
-      userId: doc.id,
-      ...doc.data()
-    }));
+    const playersMap = {};
+    usersSnap.docs.forEach(d => {
+      playersMap[d.id] = d.data();
+    });
 
-    const enrichedSession = {
-      ...session,
-      _votes: votes
-    };
+    // ✅ Build messages safely
+    const messages = [];
 
-    const encodedMsg =
-      buildWhatsAppMessage(
-        enrichedSession,
-        playersMap
+    for (const session of dashboardSessions) {
+      const votesSnap = await getDocs(
+        collection(
+          db,
+          "voting_sessions",
+          session.id,
+          "votes"
+        )
       );
 
-    if (!encodedMsg) continue;
+      const votes = votesSnap.docs.map(doc => ({
+        userId: doc.id,
+        ...doc.data()
+      }));
 
-    messages.push(
-      decodeURIComponent(encodedMsg)
-    );
-  }
+      const enrichedSession = {
+        ...session,
+        _votes: votes
+      };
 
-  if (!messages.length) return;
+      const encodedMsg =
+        buildWhatsAppMessage(
+          enrichedSession,
+          playersMap
+        );
 
-  // ✅ Join once
-  let finalMessage =
-    messages.join(SESSION_SEPARATOR);
+      if (!encodedMsg) continue;
 
-  // ✅ ONLY ONE LINK AT END
-  finalMessage +=
-    `\n\n👉 Vote & details:\n` +
-    `${window.location.origin}/dashboard`;
+      messages.push(
+        decodeURIComponent(encodedMsg)
+      );
+    }
 
-  window.open(
-    "https://wa.me/?text=" +
+    if (!messages.length) return;
+
+    // ✅ Join once
+    let finalMessage =
+      messages.join(SESSION_SEPARATOR);
+
+    // ✅ ONLY ONE LINK AT END
+    finalMessage +=
+      `\n\n👉 Vote & details:\n` +
+      `${window.location.origin}/dashboard`;
+
+    window.open(
+      "https://wa.me/?text=" +
       encodeURIComponent(finalMessage),
-    "_blank"
-  );
-};
+      "_blank"
+    );
+  };
 
   return (
     <Box p={2} maxWidth={900} mx="auto">
@@ -202,6 +202,9 @@ const shareAllVotingOnWhatsApp = async () => {
               </MenuItem>
               <MenuItem onClick={() => navigate("/club-expenses")}>
                 💰 Club Expenses
+              </MenuItem>
+                  <MenuItem onClick={() => navigate("/jersey-dashboard")}>
+                👕 Jersey Center
               </MenuItem>
               <MenuItem onClick={() => navigate("/history")}>
                 📜 Voting History

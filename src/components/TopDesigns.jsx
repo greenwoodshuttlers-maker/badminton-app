@@ -12,128 +12,146 @@
 
 import { useEffect, useState } from "react";
 import {
-  collection,
-  query,
-  orderBy,
-  onSnapshot
+    collection,
+    query,
+    orderBy,
+    onSnapshot
 } from "firebase/firestore";
 
 import {
-  getStorage,
-  ref,
-  getDownloadURL
+    getStorage,
+    ref,
+    getDownloadURL
 } from "firebase/storage";
 
 import { db } from "../services/firebase";
 
 function TopDesigns() {
 
-  const [designs, setDesigns] = useState([]);
-  const storage = getStorage();
+    const [designs, setDesigns] = useState([]);
+    const [previewImage, setPreviewImage] = useState(null);
+    const storage = getStorage();
 
-  useEffect(() => {
+    useEffect(() => {
 
-    const q = query(
-      collection(db, "jerseyVotes"),
-      orderBy("votes", "desc")
-    );
+        const q = query(
+            collection(db, "jerseyVotes"),
+            orderBy("votes", "desc")
+        );
 
-    const unsubscribe = onSnapshot(q, async (snap) => {
+        const unsubscribe = onSnapshot(q, async (snap) => {
 
-      const results = await Promise.all(
+            const results = await Promise.all(
 
-        snap.docs.map(async (d) => {
+                snap.docs.map(async (d) => {
 
-          const data = d.data();
+                    const data = d.data();
 
-          if (!data.votes || data.votes <= 0) return null;
+                    if (!data.votes || data.votes <= 0) return null;
 
-          try {
+                    try {
 
-            const url = await getDownloadURL(
-              ref(storage, `jersey-designs/${d.id}`)
+                        const url = await getDownloadURL(
+                            ref(storage, `jersey-designs/${d.id}`)
+                        );
+
+                        return {
+                            id: d.id,
+                            votes: data.votes,
+                            voters: data.voters || [],
+                            url
+                        };
+
+                    } catch {
+
+                        return null;
+
+                    }
+
+                })
+
             );
 
-            return {
-              id: d.id,
-              votes: data.votes,
-              voters: data.voters || [],
-              url
-            };
+            setDesigns(results.filter(Boolean));
 
-          } catch {
+        });
 
-            return null;
+        return () => unsubscribe();
 
-          }
-
-        })
-
-      );
-
-      setDesigns(results.filter(Boolean));
-
-    });
-
-    return () => unsubscribe();
-
-  }, []);
+    }, []);
 
 
-  if (designs.length === 0) {
+    if (designs.length === 0) {
+
+        return (
+
+            <div style={emptyBox}>
+
+                <h3>No votes yet</h3>
+
+                <p>
+                    Please vote a few jersey designs
+                    to see the most popular ones.
+                </p>
+
+            </div>
+
+        );
+
+    }
 
     return (
 
-      <div style={emptyBox}>
+        <>
+            <div style={grid}>
 
-        <h3>No votes yet</h3>
+                {designs.map(d => (
 
-        <p>
-          Please vote a few jersey designs
-          to see the most popular ones.
-        </p>
+                    <div
+                        key={d.id}
+                        style={card}
+                        title={`Voted by: ${d.voters.join(", ")}`}
+                    >
 
-      </div>
+                        <img
+                            src={d.url}
+                            alt={d.id}
+                            style={image}
+                            onClick={() => setPreviewImage(d.url)}
+                        />
+
+                        <p style={name}>{d.id}</p>
+
+                        <p style={votes}>❤️ {d.votes}</p>
+
+                        {d.voters.length > 0 && (
+                            <div style={voters}>
+                                {d.voters.join(", ")}
+                            </div>
+                        )}
+
+                    </div>
+
+                ))}
+
+            </div>
+
+            {previewImage && (
+                <div
+                    style={overlay}
+                    onClick={() => setPreviewImage(null)}
+                >
+                    <img
+                        src={previewImage}
+                        style={preview}
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                </div>
+            )}
+
+        </>
 
     );
-
-  }
-
-  return (
-
-    <div style={grid}>
-
-      {designs.map(d => (
-
-        <div
-          key={d.id}
-          style={card}
-          title={`Voted by: ${d.voters.join(", ")}`}
-        >
-
-          <img
-            src={d.url}
-            alt={d.id}
-            style={image}
-          />
-
-          <p style={name}>{d.id}</p>
-
-          <p style={votes}>❤️ {d.votes}</p>
-
-          {d.voters.length > 0 && (
-            <div style={voters}>
-              {d.voters.join(", ")}
-            </div>
-          )}
-
-        </div>
-
-      ))}
-
-    </div>
-
-  );
 
 }
 
@@ -143,45 +161,67 @@ export default TopDesigns;
 /* ================= Styles ================= */
 
 const grid = {
-  display: "flex",
-  gap: "15px",
-  flexWrap: "wrap"
+    display: "flex",
+    gap: "12px",
+    overflowX: "auto",
+    paddingBottom: "10px"
 };
 
 const card = {
-  width: "140px",
-  border: "1px solid #eee",
-  borderRadius: "10px",
-  padding: "10px",
-  textAlign: "center",
-  background: "#fff",
-  boxShadow: "0 2px 8px rgba(0,0,0,0.08)"
+    width: "120px",
+    minWidth: "120px",
+    border: "1px solid #eee",
+    borderRadius: "10px",
+    padding: "10px",
+    textAlign: "center",
+    background: "#fff",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.08)"
 };
 
 const image = {
-  width: "100%",
-  height: "100px",
-  objectFit: "contain"
+    width: "100%",
+    height: "80px",
+    objectFit: "contain",
+    cursor: "pointer"
 };
 
 const name = {
-  fontSize: "11px",
-  marginTop: "6px"
+    fontSize: "11px",
+    marginTop: "6px"
 };
 
 const votes = {
-  color: "#e11d48",
-  fontWeight: "600"
+    color: "#e11d48",
+    fontWeight: "600"
 };
 
 const voters = {
-  fontSize: "10px",
-  color: "#666",
-  marginTop: "4px"
+    fontSize: "10px",
+    color: "#666",
+    marginTop: "4px"
 };
 
 const emptyBox = {
-  textAlign: "center",
-  padding: "30px",
-  color: "#777"
+    textAlign: "center",
+    padding: "30px",
+    color: "#777"
+};
+
+const overlay = {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%",
+    background: "rgba(0,0,0,0.9)",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 9999
+};
+
+const preview = {
+    maxWidth: "95%",
+    maxHeight: "90%",
+    borderRadius: "10px"
 };

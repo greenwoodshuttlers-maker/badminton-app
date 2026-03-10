@@ -42,7 +42,7 @@ function JerseyDashboard() {
 
                 <Link to="/">
                     <button style={secondaryBtn}>
-                       ← Back to Main Dashboard
+                        ←
                     </button>
                 </Link>
 
@@ -106,7 +106,9 @@ const navButtons = {
     display: "flex",
     gap: "10px",
     marginBottom: "25px",
-    flexWrap: "wrap"
+    flexWrap: "wrap",
+    justifyContent: "center",
+    alignItems: "center"
 };
 
 const primaryBtn = {
@@ -116,7 +118,10 @@ const primaryBtn = {
     border: "none",
     borderRadius: "8px",
     cursor: "pointer",
-    fontWeight: 500
+    fontWeight: 500,
+    flex: "1 1 160px",
+    maxWidth: "220px",
+    width: "100%"
 };
 
 const votingBtn = {
@@ -126,7 +131,10 @@ const votingBtn = {
     border: "none",
     borderRadius: "8px",
     cursor: "pointer",
-    fontWeight: 500
+    fontWeight: 500,
+    flex: "1 1 160px",
+    maxWidth: "220px",
+    width: "100%"
 };
 
 const secondaryBtn = {
@@ -135,7 +143,10 @@ const secondaryBtn = {
     color: "white",
     border: "none",
     borderRadius: "8px",
-    cursor: "pointer"
+    cursor: "pointer",
+    flex: "1 1 220px",
+    maxWidth: "320px",
+    width: "100%"
 };
 
 const card = {
